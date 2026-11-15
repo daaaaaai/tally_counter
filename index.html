@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#16181d">
+  <title>数取器</title>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <style>
+    :root {
+      --bg: #f4f4f2;
+      --panel: #ffffff;
+      --text: #1d1f23;
+      --muted: #7a7d84;
+      --line: #e3e3e0;
+      --accent: #e8590c;
+      --accent-press: #c44a08;
+      --bar: #e8590c;
+      --bar-partial: #f5b48c;
+      --danger: #d6336c;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16181d;
+        --panel: #20232a;
+        --text: #eceef2;
+        --muted: #8b9099;
+        --line: #31353e;
+        --accent: #ff7a2e;
+        --accent-press: #e0611a;
+        --bar: #ff7a2e;
+        --bar-partial: #7a4527;
+        --danger: #f06595;
+      }
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+      display: flex;
+      justify-content: center;
+      height: 100dvh;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 560px;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: max(12px, env(safe-area-inset-top, 0px)) 16px max(16px, env(safe-area-inset-bottom, 0px));
+    }
+
+    /* ── ヘッダー ── */
+    header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    h1 { font-size: 1rem; font-weight: 700; flex: 1; }
+    h1 a { color: inherit; text-decoration: none; }
+    .tool {
+      font: inherit;
+      font-size: 0.85rem;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 12px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .tool:active { background: var(--line); }
+    .tool:disabled { opacity: 0.4; cursor: default; }
+    .tool.danger { color: var(--danger); }
+
+    /* ── 数値 ── */
+    .stats {
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 1.25fr 1fr 1fr;
+      gap: 8px;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px 10px 10px;
+      min-width: 0;
+    }
+    .stat-label { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+    .stat-value {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      line-height: 1.1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #count { font-size: clamp(2rem, 10vw, 2.6rem); }
+    #avg, #recent { font-size: clamp(1.4rem, 7vw, 1.8rem); margin-top: 6px; }
+    .sub { font-size: 0.72rem; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+    /* ── グラフ ── */
+    .chart-wrap {
+      flex-shrink: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 8px 10px 6px;
+    }
+    .chart-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    #chart { display: block; width: 100%; height: 20vh; min-height: 110px; max-height: 200px; }
+
+    /* ── カウントボタン ── */
+    #plus {
+      flex: 1;
+      min-height: 160px;
+      border: none;
+      border-radius: 24px;
+      background: var(--accent);
+      color: #fff;
+      font-size: clamp(5rem, 22vw, 9rem);
+      font-weight: 300;
+      line-height: 1;
+      cursor: pointer;
+      touch-action: manipulation;
+      box-shadow: 0 6px 0 var(--accent-press);
+      transform: translateY(0);
+      transition: transform 0.04s, box-shadow 0.04s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #plus.pressed {
+      background: var(--accent-press);
+      transform: translateY(5px);
+      box-shadow: 0 1px 0 var(--accent-press);
+    }
+    #plus small { font-size: 0.8rem; font-weight: 400; opacity: 0.85; }
+    #plus:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1><a href="https://github.com/daaaaaai/tally_counter" target="_blank" rel="noopener">数取器</a></h1>
+      <button class="tool" id="undo" title="直前の1回を取り消す">−1</button>
+      <button class="tool" id="csv" title="タップ時刻をCSVで保存">CSV</button>
+      <button class="tool danger" id="reset">リセット</button>
+    </header>
+
+    <section class="stats">
+      <div class="stat">
+        <div class="stat-label">カウント</div>
+        <div class="stat-value" id="count">0</div>
+        <div class="sub" id="elapsed">経過 0:00</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">平均（回/分）</div>
+        <div class="stat-value" id="avg">–</div>
+        <div class="sub">最初〜最後</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">直近（回/分）</div>
+        <div class="stat-value" id="recent">–</div>
+        <div class="sub">直近10回</div>
+      </div>
+    </section>
+
+    <section class="chart-wrap">
+      <div class="chart-head"><span>1分ごとのカウント</span><span id="chart-note"></span></div>
+      <canvas id="chart"></canvas>
+    </section>
+
+    <button id="plus" aria-label="カウントを1増やす">＋<small>タップ / スペースキー</small></button>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'tally_counter_v1';
+    const RECENT_N = 10;
+    const MAX_BARS = 20;
+
+    const $ = id => document.getElementById(id);
+    const els = {
+      count: $('count'), elapsed: $('elapsed'), avg: $('avg'), recent: $('recent'),
+      chart: $('chart'), note: $('chart-note'), plus: $('plus'),
+      undo: $('undo'), reset: $('reset'), csv: $('csv'),
+    };
+
+    // タップ時刻（ms）の配列が唯一の状態
+    let taps = load();
+
+    function load() {
+      try {
+        const v = JSON.parse(localStorage.getItem(STORAGE_KEY));
+        return Array.isArray(v) ? v.filter(Number.isFinite) : [];
+      } catch { return []; }
+    }
+    function save() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(taps)); } catch {}
+    }
+
+    // ── 計算 ──
+    function perMinute(n, ms) { return ms > 0 ? (n / ms) * 60000 : null; }
+    function avgRate() {
+      // 最初のタップ〜最後のタップ間の (回数-1) 区間から算出
+      if (taps.length < 2) return null;
+      return perMinute(taps.length - 1, taps[taps.length - 1] - taps[0]);
+    }
+    function recentRate() {
+      if (taps.length < 2) return null;
+      const k = Math.min(RECENT_N, taps.length);
+      const s = taps.slice(-k);
+      return perMinute(k - 1, s[k - 1] - s[0]);
+    }
+    function fmtRate(r) {
+      if (r == null) return '–';
+      return r >= 100 ? Math.round(r).toString() : r.toFixed(1);
+    }
+    function fmtDuration(ms) {
+      const s = Math.max(0, Math.floor(ms / 1000));
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      const mmss = `${m}:${String(sec).padStart(2, '0')}`;
+      return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : mmss;
+    }
+
+    // ── 描画 ──
+    function renderStats() {
+      els.count.textContent = taps.length.toLocaleString();
+      els.avg.textContent = fmtRate(avgRate());
+      els.recent.textContent = fmtRate(recentRate());
+      els.undo.disabled = taps.length === 0;
+      els.reset.disabled = taps.length === 0;
+      els.csv.disabled = taps.length === 0;
+      renderElapsed();
+    }
+    function renderElapsed() {
+      els.elapsed.textContent = taps.length ? `経過 ${fmtDuration(Date.now() - taps[0])}` : '経過 0:00';
+    }
+
+    function cssVar(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+
+    function renderChart() {
+      const cv = els.chart;
+      const dpr = window.devicePixelRatio || 1;
+      const w = cv.clientWidth, h = cv.clientHeight;
+      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+        cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      }
+      const ctx = cv.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+
+      const colors = {
+        bar: cssVar('--bar'), partial: cssVar('--bar-partial'),
+        line: cssVar('--line'), muted: cssVar('--muted'), text: cssVar('--text'),
+      };
+      ctx.font = '11px -apple-system, "Hiragino Sans", sans-serif';
+
+      if (!taps.length) {
+        ctx.fillStyle = colors.muted;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('＋を押すと記録が始まります', w / 2, h / 2);
+        els.note.textContent = '';
+        return;
+      }
+
+      // 最初のタップを起点に1分ごとに集計。最後の1本は進行中の分。
+      const t0 = taps[0];
+      const nowIdx = Math.floor((Date.now() - t0) / 60000);
+      const buckets = new Array(nowIdx + 1).fill(0);
+      for (const t of taps) {
+        const i = Math.floor((t - t0) / 60000);
+        if (i >= 0 && i < buckets.length) buckets[i]++;
+      }
+      const start = Math.max(0, buckets.length - MAX_BARS);
+      const shown = buckets.slice(start);
+      els.note.textContent = start > 0 ? `直近${MAX_BARS}分を表示` : '';
+
+      const padL = 30, padR = 4, padT = 14, padB = 16;
+      const cw = w - padL - padR, ch = h - padT - padB;
+      const maxV = Math.max(10, ...shown);
+      const step = niceStep(maxV);
+      const top = Math.ceil(maxV / step) * step;
+
+      // 目盛り
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      for (let v = 0; v <= top; v += step) {
+        const y = padT + ch - (v / top) * ch;
+        ctx.strokeStyle = colors.line;
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(padL, Math.round(y) + 0.5); ctx.lineTo(w - padR, Math.round(y) + 0.5); ctx.stroke();
+        ctx.fillStyle = colors.muted;
+        ctx.fillText(String(v), padL - 5, y);
+      }
+
+      // 棒
+      const slot = cw / Math.max(shown.length, 6);
+      const bw = Math.max(4, Math.min(36, slot * 0.7));
+      shown.forEach((v, i) => {
+        const isCurrent = start + i === nowIdx;
+        const x = padL + slot * i + (slot - bw) / 2;
+        const bh = (v / top) * ch;
+        const y = padT + ch - bh;
+        ctx.fillStyle = isCurrent ? colors.partial : colors.bar;
+        roundRectTop(ctx, x, y, bw, bh, Math.min(4, bw / 3));
+        if (v > 0 && bw >= 14) {
+          ctx.fillStyle = colors.text;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(String(v), x + bw / 2, y - 2);
+        }
+        // 分ラベル（間引き）
+        const label = start + i + 1;
+        const every = Math.ceil(shown.length / 10);
+        if ((label - 1) % every === 0 || isCurrent) {
+          ctx.fillStyle = colors.muted;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(isCurrent ? `${label}分目…` : `${label}`, x + bw / 2, padT + ch + 3);
+        }
+      });
+    }
+    function niceStep(maxV) {
+      const raw = maxV / 4;
+      const p = Math.pow(10, Math.floor(Math.log10(raw)));
+      const n = raw / p;
+      return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p;
+    }
+    function roundRectTop(ctx, x, y, w, h, r) {
+      if (h <= 0) return;
+      r = Math.min(r, h);
+      ctx.beginPath();
+      ctx.moveTo(x, y + h);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function renderAll() { renderStats(); renderChart(); }
+
+    // ── 操作 ──
+    function countUp() {
+      taps.push(Date.now());
+      save();
+      renderAll();
+      if (navigator.vibrate) navigator.vibrate(8);
+    }
+    function flash() {
+      els.plus.classList.add('pressed');
+      clearTimeout(flash.t);
+      flash.t = setTimeout(() => els.plus.classList.remove('pressed'), 70);
+    }
+
+    // pointerdown で即時反応（click の遅延・ダブルタップズームを避ける）
+    els.plus.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      flash();
+      countUp();
+    });
+    els.plus.addEventListener('click', e => e.preventDefault());
+    els.plus.addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') e.preventDefault(); });
+
+    document.addEventListener('keydown', e => {
+      if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === ' ' || e.key === 'Enter' || e.key === '+' || e.key === 'ArrowUp') {
+        if (e.target.closest && e.target.closest('.tool')) return;
+        e.preventDefault();
+        flash();
+        countUp();
+      } else if (e.key === 'Backspace' || e.key === '-') {
+        e.preventDefault();
+        undo();
+      }
+    });
+
+    function undo() {
+      if (!taps.length) return;
+      taps.pop();
+      save();
+      renderAll();
+    }
+    els.undo.addEventListener('click', undo);
+
+    els.reset.addEventListener('click', () => {
+      if (!taps.length) return;
+      if (!confirm(`カウント ${taps.length} をリセットしますか？`)) return;
+      taps = [];
+      save();
+      renderAll();
+    });
+
+    els.csv.addEventListener('click', () => {
+      if (!taps.length) return;
+      const t0 = taps[0];
+      const pad = n => String(n).padStart(2, '0');
+      const iso = t => {
+        const d = new Date(t);
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+      };
+      const rows = ['no,time,elapsed_sec'];
+      taps.forEach((t, i) => rows.push(`${i + 1},${iso(t)},${((t - t0) / 1000).toFixed(3)}`));
+      const blob = new Blob([rows.join('\n') + '\n'], { type: 'text/csv' });
+      const a = document.createElement('a');
+      const d = new Date(t0);
+      a.download = `tally_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
+      a.href = URL.createObjectURL(blob);
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    });
+
+    // 経過時間と進行中の分の棒を更新
+    setInterval(() => { if (taps.length) { renderElapsed(); renderChart(); } }, 1000);
+    window.addEventListener('resize', renderChart);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderChart);
+
+    renderAll();
+  </script>
+</body>
+</html>
